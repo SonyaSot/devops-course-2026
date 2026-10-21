@@ -120,3 +120,118 @@ hostname -f
 03-ssh-hardened — после усиления защиты SSH и перехода на порт 2222.
 
 Снимки предназначены для восстановления состояния виртуальной машины при ошибках конфигурации.
+
+## 9. Восстановление конфигурации
+
+Восстановление начинается со снимка 01-clean-install.
+
+Для повторной настройки необходимо:
+1. Создать пользователя devops и добавить его в группу sudo.
+2. Добавить открытый SSH-ключ в authorized_keys.
+3. Установить права 700 и 600.
+4. Создать файл 99-hardening.conf.
+5. Отключить конфликтующую настройку PasswordAuthentication в 50-cloud-init.conf.
+6. Переключить SSH на порт 2222 и изменить проброс портов VirtualBox.
+7. Настроить UFW с политикой deny incoming и разрешить порты 2222, 80 и 443.
+8. Настроить доменное имя devops.local.
+9. Запустить scripts/audit.sh и проверить результаты.
+
+
+### Команды восстановления сервера
+
+Создание пользователя и выдача прав:
+
+```bash
+sudo adduser devops
+sudo usermod -aG sudo devops
+groups devops
+```
+
+Настройка SSH-ключей:
+
+```bash
+sudo install -d -m 700 -o devops -g devops /home/devops/.ssh
+sudo touch /home/devops/.ssh/authorized_keys
+sudo chown devops:devops /home/devops/.ssh/authorized_keys
+sudo chmod 600 /home/devops/.ssh/authorized_keys
+```
+
+После этого открытый SSH-ключ с Windows необходимо добавить в authorized_keys.
+
+Настройка SSH:
+
+```bash
+sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
+sudo nano /etc/ssh/sshd_config.d/99-hardening.conf
+```
+
+В файл добавить:
+
+```text
+Port 2222
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+MaxAuthTries 3
+LoginGraceTime 30
+AllowUsers devops
+X11Forwarding no
+ClientAliveInterval 300
+ClientAliveCountMax 2
+```
+
+В файле 50-cloud-init.conf закомментировать PasswordAuthentication yes.
+
+После проверки синтаксиса переключить службу:
+
+```bash
+sudo sshd -t
+sudo systemctl disable --now ssh.socket
+sudo systemctl enable --now ssh.service
+sudo systemctl restart ssh
+```
+
+Затем изменить порт гостя в правиле VirtualBox с 22 на 2222 и проверить новое SSH-подключение, не закрывая старое.
+
+Настройка UFW:
+
+```bash
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw limit 2222/tcp comment 'SSH rate-limited'
+sudo ufw allow 80/tcp comment 'HTTP'
+sudo ufw allow 443/tcp comment 'HTTPS'
+sudo ufw enable
+sudo ufw logging medium
+sudo ufw status verbose
+```
+
+Настройка имени сервера:
+
+```bash
+sudo hostnamectl set-hostname devops-vm
+sudo nano /etc/hosts
+hostname -f
+```
+
+В /etc/hosts необходимо указать:
+
+```text
+127.0.1.1 devops-vm.devops.local devops-vm
+```
+
+На Windows в файл hosts добавить:
+
+```text
+192.168.56.101 devops.local
+```
+
+После завершения восстановления выполнить аудит:
+
+```bash
+bash ~/scripts/audit.sh
+echo $?
+```
+
+Ожидается 6 успешных проверок и код возврата 0.
