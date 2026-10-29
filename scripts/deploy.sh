@@ -1,4 +1,6 @@
 
+
+
 #!/usr/bin/env bash
 # Автоматическая доставка сайта на Ubuntu Server
 
@@ -67,9 +69,14 @@ if [[ ! -f "$CA_CERT" ]]; then
     exit 1
 fi
 
-curl --fail --silent --show-error \
+
+if ! curl --fail --silent --show-error \
     --cacert "$CA_CERT" \
-    -o /dev/null "$SITE_URL"
+    -o /dev/null "$SITE_URL"; then
+    echo "Ошибка: сайт недоступен или проверка HTTPS не пройдена" >&2
+    exit 1
+fi
 
 echo "Деплой выполнен успешно: $COMMIT"
 exit 0
+
