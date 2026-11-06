@@ -19,7 +19,7 @@ services:
     image: devops-app:1.0
     env_file: .env
     ports:
-      - "127.0.0.1:5000:5000"
+      - "5000:5000"
     depends_on:
       db:
         condition: service_healthy
